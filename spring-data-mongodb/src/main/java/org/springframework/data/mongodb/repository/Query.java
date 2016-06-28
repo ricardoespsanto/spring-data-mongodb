@@ -63,6 +63,14 @@ public @interface Query {
 	boolean count() default false;
 
 	/**
+	 * Returns whether the query defined should be executed as exists projection.
+	 *
+	 * @since 1.10
+	 * @return
+	 */
+	boolean exists() default false;
+
+	/**
 	 * Returns whether the query should delete matching documents.
 	 * 
 	 * @since 1.5
