@@ -21,6 +21,7 @@ import static org.junit.Assert.*;
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.Future;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -212,6 +213,28 @@ public class MongoQueryMethodUnitTests {
 		assertThat(method.getEntityInformation().getJavaType(), is(typeCompatibleWith(User.class)));
 	}
 
+	/**
+	 * @see DATAMONGO-1454
+	 */
+	@Test
+	public void createsMongoQueryMethodWithExistsProjection() throws Exception {
+
+		MongoQueryMethod method = queryMethod(PersonRepository.class, "existsBy");
+
+		assertThat(method.isExistsQuery(), is(true));
+	}
+
+	/**
+	 * @see DATAMONGO-1454
+	 */
+	@Test
+	public void createsMongoQueryMethodWithWrappedExistsProjection() throws Exception {
+
+		MongoQueryMethod method = queryMethod(PersonRepository.class, "existsByFuture");
+
+		assertThat(method.isExistsQuery(), is(true));
+	}
+
 	private MongoQueryMethod queryMethod(Class<?> repository, String name, Class<?>... parameters) throws Exception {
 
 		Method method = repository.getMethod(name, parameters);
@@ -254,6 +277,10 @@ public class MongoQueryMethodUnitTests {
 		 * @see DATAMONGO-1266
 		 */
 		void deleteByUserName(String userName);
+
+		boolean existsBy();
+
+		Future<Boolean> existsByFuture();
 	}
 
 	interface SampleRepository extends Repository<Contact, Long> {

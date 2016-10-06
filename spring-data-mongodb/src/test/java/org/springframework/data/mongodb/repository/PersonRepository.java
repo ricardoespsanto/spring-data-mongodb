@@ -259,7 +259,7 @@ public interface PersonRepository extends MongoRepository<Person, String>, Query
 	/**
 	 * @see DATAMONGO-1454
 	 */
-	@Query(value = "{ 'lastname' : ?0 }", exists = true)
+	@Query(value = "{ 'lastname' : ?0 }")
 	boolean someExistQuery(String lastname);
 
 	/**

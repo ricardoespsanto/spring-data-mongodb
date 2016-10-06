@@ -33,6 +33,7 @@ import org.springframework.data.mongodb.repository.Query;
 import org.springframework.data.projection.ProjectionFactory;
 import org.springframework.data.repository.core.RepositoryMetadata;
 import org.springframework.data.repository.query.QueryMethod;
+import org.springframework.data.repository.util.QueryExecutionConverters;
 import org.springframework.data.util.ClassTypeInformation;
 import org.springframework.data.util.TypeInformation;
 import org.springframework.util.Assert;
@@ -53,6 +54,7 @@ public class MongoQueryMethod extends QueryMethod {
 
 	private final Method method;
 	private final MappingContext<? extends MongoPersistentEntity<?>, MongoPersistentProperty> mappingContext;
+	private final Class<?> unwrappedReturnType;
 
 	private MongoEntityMetadata<?> metadata;
 
@@ -73,6 +75,7 @@ public class MongoQueryMethod extends QueryMethod {
 
 		this.method = method;
 		this.mappingContext = mappingContext;
+		this.unwrappedReturnType = potentiallyUnwrapReturnTypeFor(method);
 	}
 
 	/*
@@ -188,6 +191,16 @@ public class MongoQueryMethod extends QueryMethod {
 	}
 
 	/**
+	 * Returns whether the query is a exists projection by checking the return type.
+	 *
+	 * @return
+	 * @since 1.10
+	 */
+	public boolean isExistsQuery() {
+		return unwrappedReturnType.isAssignableFrom(Boolean.class) || unwrappedReturnType.isAssignableFrom(Boolean.TYPE);
+	}
+
+	/**
 	 * Returns the {@link Query} annotation that is applied to the method or {@code null} if none available.
 	 * 
 	 * @return
@@ -249,5 +262,15 @@ public class MongoQueryMethod extends QueryMethod {
 		}
 
 		return metaAttributes;
+	}
+
+	private static Class<? extends Object> potentiallyUnwrapReturnTypeFor(Method method) {
+
+		if (QueryExecutionConverters.supports(method.getReturnType())) {
+			// unwrap only one level to handle cases like Future<List<Entity>> correctly.
+			return ClassTypeInformation.fromReturnTypeOf(method).getComponentType().getType();
+		}
+
+		return method.getReturnType();
 	}
 }

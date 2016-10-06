@@ -97,9 +97,9 @@ public class StringBasedMongoQuery extends AbstractMongoQuery {
 		this.fieldSpec = BINDING_PARSER.parseAndCollectParameterBindingsFromQueryIntoBindings(
 				method.getFieldSpecification(), this.fieldSpecParameterBindings);
 
-		this.isCountQuery = method.hasAnnotatedQuery() ? method.getQueryAnnotation().count() : false;
-		this.isExistsQuery = method.hasAnnotatedQuery() ? method.getQueryAnnotation().exists() : false;
-		this.isDeleteQuery = method.hasAnnotatedQuery() ? method.getQueryAnnotation().delete() : false;
+		this.isCountQuery = method.hasAnnotatedQuery() && method.getQueryAnnotation().count();
+		this.isExistsQuery = method.isExistsQuery();
+		this.isDeleteQuery = method.hasAnnotatedQuery() && method.getQueryAnnotation().delete();
 
 		if (hasTwoQueryExecutions(this.isCountQuery, this.isExistsQuery, this.isDeleteQuery)) {
 			throw new IllegalArgumentException(String.format(COUNT_EXISTS_AND_DELETE, method));
@@ -165,7 +165,7 @@ public class StringBasedMongoQuery extends AbstractMongoQuery {
 	 * 
 	 * @author Thomas Darimont
 	 */
-	private static enum ParameterBindingParser {
+	private enum ParameterBindingParser {
 
 		INSTANCE;
 
@@ -272,7 +272,7 @@ public class StringBasedMongoQuery extends AbstractMongoQuery {
 
 			} else if (value instanceof Pattern) {
 
-				String string = ((Pattern) value).toString().trim();
+				String string = value.toString().trim();
 				Matcher valueMatcher = PARSEABLE_BINDING_PATTERN.matcher(string);
 
 				while (valueMatcher.find()) {
