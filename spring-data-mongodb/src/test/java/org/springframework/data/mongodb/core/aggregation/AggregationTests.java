@@ -55,6 +55,7 @@ import org.springframework.data.mapping.model.MappingException;
 import org.springframework.data.mongodb.core.CollectionCallback;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.Venue;
+import org.springframework.data.mongodb.core.aggregation.AggregationExpressions.Let;
 import org.springframework.data.mongodb.core.aggregation.AggregationTests.CarDescriptor.Entry;
 import org.springframework.data.mongodb.core.index.GeospatialIndex;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -67,6 +68,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
 import com.mongodb.BasicDBObject;
+import com.mongodb.BasicDBObjectBuilder;
 import com.mongodb.CommandResult;
 import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
@@ -1539,6 +1541,34 @@ public class AggregationTests {
 						Sales.builder().id("2").items(Collections.<Item> emptyList()).build()));
 	}
 
+	/**
+	 * @see DATAMONGO-1538
+	 */
+	@Test
+	public void letShouldBeAppliedCorrectly() {
+
+		assumeTrue(mongoVersion.isGreaterThanOrEqualTo(THREE_DOT_TWO));
+
+		Sales2 sales1 = Sales2.builder().id("1").price(10).tax(0.5F).applyDiscount(true).build();
+		Sales2 sales2 = Sales2.builder().id("2").price(10).tax(0.25F).applyDiscount(false).build();
+
+		mongoTemplate.insert(Arrays.asList(sales1, sales2), Sales2.class);
+
+		TypedAggregation<Sales2> agg = Aggregation.newAggregation(Sales2.class,
+				Aggregation.project()
+						.and(Let.let(AggregationFunctionExpressions.ADD.of(Fields.field("price"), Fields.field("tax"))).as("total") //
+								.andExpression(
+										ConditionalOperator.newBuilder().when(Fields.field("applyDiscount")).then(0.9D).otherwise(1.0D))
+								.as("discounted") //
+								.in(AggregationFunctionExpressions.MULTIPLY.of(Fields.field("total"), Fields.field("discounted")))) //
+						.as("finalTotal"));
+
+		AggregationResults<DBObject> result = mongoTemplate.aggregate(agg, DBObject.class);
+		assertThat(result.getMappedResults(),
+				contains(new BasicDBObjectBuilder().add("_id", "1").add("finalTotal", 9.450000000000001D).get(),
+						new BasicDBObjectBuilder().add("_id", "2").add("finalTotal", 10.25D).get()));
+	}
+
 	private void createUsersWithReferencedPersons() {
 
 		mongoTemplate.dropCollection(User.class);
@@ -1780,6 +1810,9 @@ public class AggregationTests {
 		}
 	}
 
+	/**
+	 * @DATAMONGO-1491
+	 */
 	@lombok.Data
 	@Builder
 	static class Sales {
@@ -1788,6 +1821,9 @@ public class AggregationTests {
 		List<Item> items;
 	}
 
+	/**
+	 * @DATAMONGO-1491
+	 */
 	@lombok.Data
 	@Builder
 	static class Item {
@@ -1796,5 +1832,18 @@ public class AggregationTests {
 		String itemId;
 		Integer quantity;
 		Long price;
+	}
+
+	/**
+	 * @DATAMONGO-1538
+	 */
+	@lombok.Data
+	@Builder
+	static class Sales2 {
+
+		String id;
+		Integer price;
+		Float tax;
+		boolean applyDiscount;
 	}
 }

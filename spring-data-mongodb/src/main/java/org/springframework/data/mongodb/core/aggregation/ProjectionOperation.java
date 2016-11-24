@@ -17,9 +17,11 @@ package org.springframework.data.mongodb.core.aggregation;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
+import org.springframework.data.mongodb.core.aggregation.AggregationExpressions.Let.ExpressionVariable;
 import org.springframework.data.mongodb.core.aggregation.ExposedFields.ExposedField;
 import org.springframework.data.mongodb.core.aggregation.Fields.AggregationField;
 import org.springframework.data.mongodb.core.aggregation.ProjectionOperation.ProjectionOperationBuilder.FieldProjection;
@@ -731,6 +733,34 @@ public class ProjectionOperation implements FieldsExposingAggregationOperation {
 		 */
 		public ProjectionOperationBuilder filter(String as, AggregationExpression condition) {
 			return this.operation.and(AggregationExpressions.Filter.filter(name).as(as).by(condition));
+		}
+
+		/**
+		 * Generates a {@code $let} expression that binds variables for use in the specified expression, and returns the
+		 * result of the expression.
+		 *
+		 * @param valueExpression The {@link AggregationExpression} bound to {@literal variableName}.
+		 * @param variableName The variable name to be used in the {@literal in} {@link AggregationExpression}.
+		 * @param in The {@link AggregationExpression} to evaluate.
+		 * @return never {@literal null}.
+		 * @since 1.10
+		 */
+		public ProjectionOperationBuilder let(AggregationExpression valueExpression, String variableName,
+				AggregationExpression in) {
+			return this.operation.and(AggregationExpressions.Let.let(valueExpression).as(variableName).in(in));
+		}
+
+		/**
+		 * Generates a {@code $let} expression that binds variables for use in the specified expression, and returns the
+		 * result of the expression.
+		 *
+		 * @param variables The bound {@link ExpressionVariable}s.
+		 * @param in The {@link AggregationExpression} to evaluate.
+		 * @return never {@literal null}.
+		 * @since 1.10
+		 */
+		public ProjectionOperationBuilder let(Collection<ExpressionVariable> variables, AggregationExpression in) {
+			return this.operation.and(AggregationExpressions.Let.vars(variables).in(in));
 		}
 
 		/* 

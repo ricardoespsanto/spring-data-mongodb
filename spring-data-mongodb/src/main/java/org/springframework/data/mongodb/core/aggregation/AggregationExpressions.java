@@ -16,7 +16,10 @@
 package org.springframework.data.mongodb.core.aggregation;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.data.mongodb.core.aggregation.ExposedFields.ExposedField;
 import org.springframework.data.mongodb.core.aggregation.ExposedFields.FieldReference;
@@ -129,7 +132,8 @@ public interface AggregationExpressions {
 				return condition;
 			}
 
-			NestedDelegatingExpressionAggregationOperationContext nea = new NestedDelegatingExpressionAggregationOperationContext(context);
+			NestedDelegatingExpressionAggregationOperationContext nea = new NestedDelegatingExpressionAggregationOperationContext(
+					context);
 			return ((AggregationExpression) condition).toDbObject(nea);
 		}
 
@@ -284,6 +288,319 @@ public interface AggregationExpressions {
 				Assert.notNull(expression, "Expression must not be null!");
 				filter.condition = expression;
 				return filter;
+			}
+		}
+	}
+
+	/**
+	 * {@code $let} binds {@link AggregationExpression} to variables for use in the specified {@code in} expression, and
+	 * returns the result of the expression.
+	 *
+	 * @author Christoph Strobl
+	 * @since 1.10
+	 */
+	class Let implements AggregationExpression {
+
+		private List<ExpressionVariable> vars;
+		private Object in;
+
+		private Let() {
+			vars = new ArrayList<ExpressionVariable>(5);
+		}
+
+		/**
+		 * Set the {@link AggregationExpression} for one of the variables accessible in the {@code in} expression.
+		 *
+		 * @param expression must not be {@literal null}.
+		 * @return never {@literal null}.
+		 */
+		public static AsBuilder let(AggregationExpression expression) {
+			return new AggregationExpressionBuilder().expression(expression);
+		}
+
+		/**
+		 * Set the variables accessible in the {@code in} expression.
+		 *
+		 * @param variables must not be {@literal null}.
+		 * @return never {@literal null}.
+		 */
+		public static InAndExpressionBuilder vars(Collection<ExpressionVariable> variables) {
+
+			AggregationExpressionBuilder builder = new AggregationExpressionBuilder();
+			for (ExpressionVariable variable : variables) {
+				builder.variableMap.put(variable.variableName, variable);
+			}
+			return builder;
+		}
+
+		/*
+		 * (non-Javadoc)
+		 * @see org.springframework.data.mongodb.core.aggregation.AggregationExpression#toDbObject(org.springframework.data.mongodb.core.aggregation.AggregationOperationContext)
+		 */
+		@Override
+		public DBObject toDbObject(final AggregationOperationContext context) {
+
+			return toLet(new ExposedFieldsAggregationOperationContext(
+					ExposedFields.synthetic(Fields.fields(getVariableNames())), context) {
+
+				@Override
+				public FieldReference getReference(Field field) {
+
+					FieldReference ref = null;
+					try {
+						ref = context.getReference(field);
+					} catch (Exception e) {
+						// just ignore that one.
+					}
+					return ref != null ? ref : super.getReference(field);
+				}
+			});
+		}
+
+		private String[] getVariableNames() {
+
+			String[] varNames = new String[this.vars.size()];
+			for (int i = 0; i < this.vars.size(); i++) {
+				varNames[i] = this.vars.get(i).variableName;
+			}
+			return varNames;
+		}
+
+		private DBObject toLet(AggregationOperationContext context) {
+
+			DBObject letExpression = new BasicDBObject();
+
+			DBObject mappedVars = new BasicDBObject();
+			for (ExpressionVariable var : this.vars) {
+				mappedVars.putAll(getMappedVariable(var, context));
+			}
+
+			letExpression.put("vars", mappedVars);
+			letExpression.put("in", getMappedIn(context));
+
+			return new BasicDBObject("$let", letExpression);
+		}
+
+		private DBObject getMappedVariable(ExpressionVariable var, AggregationOperationContext context) {
+
+			return new BasicDBObject(var.variableName, var.expression instanceof AggregationExpression
+					? ((AggregationExpression) var.expression).toDbObject(context) : var.expression);
+		}
+
+		private Object getMappedIn(AggregationOperationContext context) {
+
+			if (!(in instanceof AggregationExpression)) {
+				return in;
+			}
+
+			NestedDelegatingExpressionAggregationOperationContext nea = new NestedDelegatingExpressionAggregationOperationContext(
+					context);
+			return ((AggregationExpression) in).toDbObject(nea);
+		}
+
+		/**
+		 * @author Christoph Strobl
+		 */
+		public static class ExpressionVariable {
+
+			private final String variableName;
+			private final Object expression;
+
+			/**
+			 * Creates new {@link ExpressionVariable}.
+			 *
+			 * @param variableName can be {@literal null}.
+			 * @param expression can be {@literal null}.
+			 */
+			private ExpressionVariable(String variableName, Object expression) {
+
+				this.variableName = variableName;
+				this.expression = expression;
+			}
+
+			/**
+			 * Create a new {@link ExpressionVariable} with given name.
+			 *
+			 * @param variableName must not be {@literal null}.
+			 * @return never {@literal null}.
+			 */
+			public static ExpressionVariable newVariable(String variableName) {
+
+				Assert.notNull(variableName, "VariableName must not be null!");
+				return new ExpressionVariable(variableName, null);
+			}
+
+			/**
+			 * Create a new {@link ExpressionVariable} with current name and given {@literal expression}.
+			 *
+			 * @param expression must not be {@literal null}.
+			 * @return never {@literal null}.
+			 */
+			public ExpressionVariable forExpression(AggregationExpression expression) {
+
+				Assert.notNull(expression, "Expression must not be null!");
+				return new ExpressionVariable(variableName, expression);
+			}
+
+			/**
+			 * Create a new {@link ExpressionVariable} with current name and given {@literal expressionObject}.
+			 *
+			 * @param expressionObject must not be {@literal null}.
+			 * @return never {@literal null}.
+			 */
+			public ExpressionVariable forExpression(DBObject expressionObject) {
+
+				Assert.notNull(expressionObject, "Expression must not be null!");
+				return new ExpressionVariable(variableName, expressionObject);
+			}
+		}
+
+		/**
+		 * @author Christoph Strobl
+		 */
+		public interface ExpressionBuilder {
+
+			/**
+			 * Set the {@link AggregationExpression} for one of the variables accessible in the {@code in} expression.
+			 *
+			 * @param expression must not be {@literal null}.
+			 * @return never {@literal null}.
+			 */
+			AsBuilder expression(AggregationExpression expression);
+
+			/**
+			 * Set the {@link DBObject} representing the expression for one of the variables accessible in the {@code in}
+			 * expression.
+			 *
+			 * @param expression must not be {@literal null}.
+			 * @return never {@literal null}.
+			 */
+			AsBuilder expression(DBObject expression);
+		}
+
+		/**
+		 * @author Christoph Strobl
+		 */
+		public interface AsBuilder {
+
+			/**
+			 * Set the {@literal variable name} for the {@link AggregationExpression}.
+			 *
+			 * @param variableName must not be {@literal null}.
+			 * @return never {@literal null}.
+			 */
+			InAndExpressionBuilder as(String variableName);
+		}
+
+		/**
+		 * @author Christoph Strobl
+		 */
+		public interface InAndExpressionBuilder {
+
+			/**
+			 * Set another {@link AggregationExpression} for one of the variables accessible in the {@code in} expression.
+			 *
+			 * @param expression must not be {@literal null}.
+			 * @return never {@literal null}.
+			 */
+			AsBuilder andExpression(AggregationExpression expression);
+
+			/**
+			 * Set another {@link DBObject} representing the expression for one of the variables accessible in the {@code in}
+			 * expression.
+			 *
+			 * @param expression must not be {@literal null}.
+			 * @return never {@literal null}.
+			 */
+			AsBuilder andExpression(DBObject expression);
+
+			/**
+			 * Set the {@link AggregationExpression} to evaluate.
+			 *
+			 * @param expression must not be {@literal null}.
+			 * @return never {@literal null}.
+			 */
+			Let in(AggregationExpression expression);
+		}
+
+		/**
+		 * @author Christoph Strobl
+		 */
+		static class AggregationExpressionBuilder implements AsBuilder, ExpressionBuilder, InAndExpressionBuilder {
+
+			private Map<String, ExpressionVariable> variableMap;
+
+			AggregationExpressionBuilder() {
+				variableMap = new LinkedHashMap<String, ExpressionVariable>();
+			}
+
+			/*
+			 * (non-Javadoc)
+			 * @see org.springframework.data.mongodb.core.aggregation.AggregationExpressions.Let.ExpressionBuilder#expression(org.springframework.data.mongodb.core.aggregation.AggregationExpression)
+			 */
+			@Override
+			public AsBuilder expression(AggregationExpression expression) {
+
+				Assert.notNull(expression, "Expression must not be null!");
+				variableMap.put(null, new ExpressionVariable(null, expression));
+				return this;
+			}
+
+			/*
+			 * (non-Javadoc)
+			 * @see org.springframework.data.mongodb.core.aggregation.AggregationExpressions.Let.ExpressionBuilder#expression(com.mongodb.DBObject)
+			 */
+			@Override
+			public AsBuilder expression(DBObject expression) {
+
+				Assert.notNull(expression, "Expression must not be null!");
+				variableMap.put(null, new ExpressionVariable(null, expression));
+				return this;
+			}
+
+			/*
+			 * (non-Javadoc)
+			 * @see org.springframework.data.mongodb.core.aggregation.AggregationExpressions.Let.AsBuilder#as(java.lang.String)
+			 */
+			@Override
+			public InAndExpressionBuilder as(String variableName) {
+
+				Assert.notNull(variableName, "VariableName must not be null!");
+				variableMap.put(variableName, new ExpressionVariable(variableName, variableMap.remove(null).expression));
+				return this;
+			}
+
+			/*
+			 * (non-Javadoc)
+			 * @see org.springframework.data.mongodb.core.aggregation.AggregationExpressions.Let.Builder#andExpression(org.springframework.data.mongodb.core.aggregation.AggregationExpression)
+			 */
+			@Override
+			public AsBuilder andExpression(AggregationExpression expression) {
+				return expression(expression);
+			}
+
+			/*
+			 * (non-Javadoc)
+			 * @see org.springframework.data.mongodb.core.aggregation.AggregationExpressions.Let.Builder#andExpression(com.mongodb.DBObject)
+			 */
+			@Override
+			public AsBuilder andExpression(DBObject expression) {
+				return expression(expression);
+			}
+
+			/*
+			 * (non-Javadoc)
+			 * @see org.springframework.data.mongodb.core.aggregation.AggregationExpressions.Let.Builder#in(org.springframework.data.mongodb.core.aggregation.AggregationExpression)
+			 */
+			@Override
+			public Let in(AggregationExpression expression) {
+
+				Assert.notNull(expression, "Expression must not be null!");
+
+				Let instance = new Let();
+				instance.vars = new ArrayList(variableMap.values());
+				instance.in = expression;
+				return instance;
 			}
 		}
 	}
